@@ -42,9 +42,16 @@
    
    $reset = *reset;
    //counter
-   $next_pc[31:0] = $taken_br ? $br_tgt_pc : $pc + 30'b1;
-   $pc[31:0] = $reset ? 31'b0 : >>1$next_pc;
+   //$next_pc[31:0] = $taken_br ? $br_tgt_pc : $pc[31:0] + 30'b1;
+   //$pc[31:0] = $reset ? 31'b0 : >>1$next_pc;
    
+   $pc[31:0] = $reset ? 32'd0 : >>1$next_pc[31:0];
+   
+   $next_pc[31:0] =
+     $reset ? 32'd0 :
+     $taken_br ? $br_tgt_pc[31:0] :  
+                $pc[31:0] + 32'd4;
+                
    //makes some rom.. who knows how but ig its a macro in verilog
    `READONLY_MEM($pc, $$instr[31:0])
    
@@ -79,7 +86,7 @@
       32'b0;
    
    //decodes instruction selection message into a single binary value so that you only have to check one thing
-   $decode_bits[10:0] = {$instr[30], $funct3, $instr[6:0]};
+   $decode_bits[10:0] = {$instr[30], $funct3[2:0], $instr[6:0]};
    //`BOGUS_USE($rd $rd_valid $rs1 $rs1_valid ...)
    //uses decode_bits to detect what type of instruction is being sent to the cpu
    $is_beq = $decode_bits ==? 11'bx_000_1100011;
@@ -104,13 +111,13 @@
    $taken_br = 
       $is_beq ? $src1_value == $src2_value : 
       $is_bne ? $src1_value != $src2_value : 
-      $is_blt ? $src1_value < $src2_value : 
-      $is_bge ? $src1_value >= $src2_value : 
+      $is_blt ? ($src1_value < $src2_value) ^ ($src1_value[31] != $src2_value[31]) :
+      $is_bge ? ($src1_value >= $src2_value) ^ ($src1_value[31] != $src2_value[31]) :
       $is_bltu ? $src1_value < $src2_value : 
       $is_bgeu ? $src1_value >= $src2_value : 
       1'b0;
    
-   $br_tgt_pc[31:0] = $imm + $pc;
+   $br_tgt_pc[31:0] = $imm[31:0] + $pc[31:0];
    
    //$next_pc = $taken_br ? $br_tgt_pc : $next_pc;
    
@@ -122,7 +129,10 @@
    $rd_is_zero = $rd == 4'b0000;
    $wr_en = $rd_is_zero ? 1'b0 : 1'b1;
    
-   m4+rf(32, 32, $reset, $wr_en, $rd, $result, $rd_en1, $rs1,  $src1_value, $rd_en2, $rs2,  $src2_value)
+   m4+rf(32, 32, $reset, $rd_valid, $rd, $result, $rs1_valid, $rs1,  $src1_value, $rs2_valid, $rs2,  $src2_value)
+   
+   //m4+rf(32, 32, $reset, $rd_valid & ~($rd == 5'b0), $rd[4:0], $result[31:0], $rs1_valid, $rs1[4:0], $src1_value[31:0], $rs2_valid, $rs2[4:0], $src2_value[31:0])
+      
    //m4+dmem(32, 32, $reset, $addr[4:0], $wr_en, $wr_data[31:0], $rd_en, $rd_data)
    m4+cpu_viz()
 \SV
