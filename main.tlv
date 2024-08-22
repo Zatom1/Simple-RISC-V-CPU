@@ -31,11 +31,11 @@
    //m4_asm(ADDI, x30, x14, 111111010100) // Subtract expected value of 44 to set x30 to 1 if and only iff the result is 45 (1 + 2 + ... + 9).
    //m4_asm(BGE, x0, x0, 0) // Done. Jump to itself (infinite loop). (Up to 20-bit signed immediate plus implicit 0 bit (unlike JALR) provides byte address; last immediate bit should also be 0)
    //m4_asm_end()
-   //m4_define(['M4_MAX_CYC'], 100)
+   
    */
    //---------------------------------------------------------------------------------
 	m4_test_prog()
-
+   m4_define(['M4_MAX_CYC'], 150)
 
 \SV
    m4_makerchip_module   // (Expanded in Nav-TLV pane.)
@@ -51,9 +51,11 @@
    
    $next_pc[31:0] =
      $reset ? 32'd0 :
+     $is_jal ? $br_tgt_pc[31:0]: 
+     $is_jalr ? $jalr_tgt_pc[31:0]: 
      $taken_br ? $br_tgt_pc[31:0] :  
                 $pc[31:0] + 32'd4;
-                
+     
    //makes some rom.. who knows how but ig its a macro in verilog
    `READONLY_MEM($pc, $$instr[31:0])
    
@@ -186,7 +188,7 @@
       1'b0;
    
    $br_tgt_pc[31:0] = $imm[31:0] + $pc[31:0];//branch target program clock time
-   $jal_tgt_pc[31:0] = $src1_value + $imm;//Jump And Link(JAL), for when you need to jump and know where you came from
+   $jalr_tgt_pc[31:0] = $src1_value + $imm;//Jump And Link(JAL), for when you need to jump and know where you came from
    //$next_pc = $taken_br ? $br_tgt_pc : $next_pc;
    
    
