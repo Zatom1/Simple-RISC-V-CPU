@@ -30,7 +30,7 @@
    m4_asm(ADDI, x30, x14, 111111010100) // Subtract expected value of 44 to set x30 to 1 if and only iff the result is 45 (1 + 2 + ... + 9).
    m4_asm(BGE, x0, x0, 0) // Done. Jump to itself (infinite loop). (Up to 20-bit signed immediate plus implicit 0 bit (unlike JALR) provides byte address; last immediate bit should also be 0)
    m4_asm_end()
-   m4_define(['M4_MAX_CYC'], 50)
+   m4_define(['M4_MAX_CYC'], 100)
    //---------------------------------------------------------------------------------
 
 
@@ -41,12 +41,14 @@
 \TLV
    
    $reset = *reset;
-   
-   $next_pc[31:0] = $pc + 31'b1;
+   //counter
+   $next_pc[31:0] = $taken_br ? $br_tgt_pc : $pc + 30'b1;
    $pc[31:0] = $reset ? 31'b0 : >>1$next_pc;
    
+   //makes some rom.. who knows how but ig its a macro in verilog
    `READONLY_MEM($pc, $$instr[31:0])
    
+   //checks what type of instruction it is 
    $is_r_instr = $instr[6:2] ==? 5'b011x0 || $instr[6:2] == 5'b01011 || $instr[6:2] == 5'b10100;
    $is_i_instr = $instr[6:2] ==? 5'b0000x || $instr[6:2] == 5'b001x0 || $instr[6:2] == 5'b11001;
    $is_s_instr = $instr[6:2] ==? 5'b0100x;
@@ -54,17 +56,20 @@
    $is_u_instr = $instr[6:2] ==? 5'b0x101;
    $is_j_instr = $instr[6:2] ==? 5'b11011;
 
+   //accesses various parts of the instruction message sent by the instruction memory (IMEM)
    $rd[4:0] = $instr[11:7];
    $funct3[2:0] = $instr[14:12];
    $rs1[4:0] = $instr[19:15];
    $rs2[4:0] = $instr[24:20];
    
+   //checks if various parts of the instruction output are valid
    $rd_valid = ! $is_s_instr && ! $is_b_instr;
    $funct3_valid = ! $is_u_instr && ! $is_j_instr;
    $rs1_valid = ! $is_u_instr && ! $is_j_instr;
    $rs2_valid = ! $is_u_instr && ! $is_j_instr && ! $is_i_instr;
    $imm_valid = ! $is_r_instr;
    
+   //get immediate-- basically the data to be operated on
    $imm[31:0] = 
       $is_i_instr ? { {21{$instr[31]}}, $instr[30:20]} : 
       $is_s_instr ? { {21{$instr[31]}}, $instr[30:25], $instr[11:7]} : 
@@ -72,10 +77,11 @@
       $is_u_instr ? { $instr[31:12], 12'b0 } : 
       $is_j_instr ? { {12{$instr[31]}}, $instr[19:12], $instr[20], $instr[30:21], 1'b0} : 
       32'b0;
-      
+   
+   //decodes instruction selection message into a single binary value so that you only have to check one thing
    $decode_bits[10:0] = {$instr[30], $funct3, $instr[6:0]};
    //`BOGUS_USE($rd $rd_valid $rs1 $rs1_valid ...)
-   
+   //uses decode_bits to detect what type of instruction is being sent to the cpu
    $is_beq = $decode_bits ==? 11'bx_000_1100011;
    $is_bne = $decode_bits ==? 11'bx_001_1100011;
    $is_blt = $decode_bits ==? 11'bx_100_1100011;
@@ -83,15 +89,40 @@
    $is_bltu = $decode_bits ==? 11'bx_110_1100011;
    $is_bgeu = $decode_bits ==? 11'bx_111_1100011;
    
-   $is_addi = $decode_bits ==? 11'bx_000_0010011;
+   $is_addi = $decode_bits ==? 11'bx_000_0010011;//add_immediate, adds immediate value to the a specified register
    
-   $is_add = $decode_bits ==? 11'b0_000_0110011;
+   $is_add = $decode_bits ==? 11'b0_000_0110011;//add, s two register values and puts them somewhere
+   
+   //Arithmetic(addition for now) logic unit
+   $result[31:0] = 
+      $is_addi ? $src1_value + $imm : 
+      $is_add ? $src1_value + $src2_value : 
+      32'b0;
+   
+   //tells you if you're allowed to take a branch
+   //branching is when (based on a condition) the instruction jumps to another place/time in the cpu
+   $taken_br = 
+      $is_beq ? $src1_value == $src2_value : 
+      $is_bne ? $src1_value != $src2_value : 
+      $is_blt ? $src1_value < $src2_value : 
+      $is_bge ? $src1_value >= $src2_value : 
+      $is_bltu ? $src1_value < $src2_value : 
+      $is_bgeu ? $src1_value >= $src2_value : 
+      1'b0;
+   
+   $br_tgt_pc[31:0] = $imm + $pc;
+   
+   //$next_pc = $taken_br ? $br_tgt_pc : $next_pc;
+   
    
    // Assert these to end simulation (before Makerchip cycle limit).
    *passed = 1'b0;
    *failed = *cyc_cnt > M4_MAX_CYC;
    
-   m4+rf(32, 32, $reset, $wr_en, $wr_index[4:0], $wr_data[31:0], $rd_en1, $rs1,  $src1_value, $rd_en2, $rs2,  $src2_value)
+   $rd_is_zero = $rd == 4'b0000;
+   $wr_en = $rd_is_zero ? 1'b0 : 1'b1;
+   
+   m4+rf(32, 32, $reset, $wr_en, $rd, $result, $rd_en1, $rs1,  $src1_value, $rd_en2, $rs2,  $src2_value)
    //m4+dmem(32, 32, $reset, $addr[4:0], $wr_en, $wr_data[31:0], $rd_en, $rd_data)
    m4+cpu_viz()
 \SV
