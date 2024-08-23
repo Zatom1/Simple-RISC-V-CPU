@@ -140,7 +140,7 @@
    
    $is_load = $opcode[6:0] ==? 7'b0000011;
    
-   //Arithmetic logic unit
+   //----Arithmetic logic unit----
    $sltu_rslt[31:0] = {31'b0, $src1_value < $src2_value};//sets a value if src1 < src2
    $sltiu_rslt[31:0] = {31'b0, $src1_value < $imm};
    
@@ -173,6 +173,8 @@
       $is_slti ? (($src1_value[31] == $imm[31]) ? $sltiu_rslt : {31'b0, $src1_value[31]}) : 
       $is_sra ? $sra_rslt[31:0] : 
       $is_srai ? $srai_rslt[31:0] :
+      $is_load ? $rs1 + $imm :
+      $is_s_instr ? $rs1 + $imm :
       32'b0;
       
 
@@ -187,23 +189,24 @@
       $is_bgeu ? $src1_value >= $src2_value : 
       1'b0;
    
-   $br_tgt_pc[31:0] = $imm[31:0] + $pc[31:0];//branch target program clock time
+   $br_tgt_pc[31:0] = $imm[31:0] + $pc[31:0];//branch register target program clock time
    $jalr_tgt_pc[31:0] = $src1_value + $imm;//Jump And Link(JAL), for when you need to jump and know where you came from
-   //$next_pc = $taken_br ? $br_tgt_pc : $next_pc;
    
+   //----MEMORY----
+   $write_result_or_mem = $is_load ? $ld_data : $result;
    
    // Assert these to end simulation (before Makerchip cycle limit).
    *passed = 1'b0;
    *failed = *cyc_cnt > M4_MAX_CYC;
    
-   $rd_is_zero = $rd == 4'b0000;
-   $wr_en = $rd_is_zero ? 1'b0 : 1'b1;
+   //$rd_is_zero = $rd == 4'b0000;
+   //$wr_en = $rd_is_zero ? 1'b0 : 1'b1;
    
-   m4+rf(32, 32, $reset, $rd_valid, $rd, $result, $rs1_valid, $rs1,  $src1_value, $rs2_valid, $rs2,  $src2_value)
    
-   //m4+rf(32, 32, $reset, $rd_valid & ~($rd == 5'b0), $rd[4:0], $result[31:0], $rs1_valid, $rs1[4:0], $src1_value[31:0], $rs2_valid, $rs2[4:0], $src2_value[31:0])
+   m4+rf(32, 32, $reset, $rd_valid, $rd, $write_result_or_mem, $rs1_valid, $rs1,  $src1_value, $rs2_valid, $rs2,  $src2_value)
+   
       
-   //m4+dmem(32, 32, $reset, $addr[4:0], $wr_en, $wr_data[31:0], $rd_en, $rd_data)
+   m4+dmem(32, 32, $reset, $result[4:0], $is_s_instr, $src2_value[31:0], $is_load, $ld_data)
    m4+cpu_viz()
 \SV
    endmodule
