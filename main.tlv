@@ -35,7 +35,7 @@
    */
    //---------------------------------------------------------------------------------
 	m4_test_prog()
-   m4_define(['M4_MAX_CYC'], 150)
+   //m4_define(['M4_MAX_CYC'], 150)
 
 \SV
    m4_makerchip_module   // (Expanded in Nav-TLV pane.)
@@ -72,6 +72,7 @@
    $funct3[2:0] = $instr[14:12];
    $rs1[4:0] = $instr[19:15];
    $rs2[4:0] = $instr[24:20];
+   $opcode[6:0] = $instr[6:0];
    
    //checks if various parts of the instruction output are valid
    $rd_valid = ! $is_s_instr && ! $is_b_instr;
@@ -190,23 +191,24 @@
       1'b0;
    
    $br_tgt_pc[31:0] = $imm[31:0] + $pc[31:0];//branch register target program clock time
-   $jalr_tgt_pc[31:0] = $src1_value + $imm;//Jump And Link(JAL), for when you need to jump and know where you came from
+   $jalr_tgt_pc[31:0] = $src1_value[31:0] + $imm[31:0];//Jump And Link(JAL), for when you need to jump and know where you came from
    
    //----MEMORY----
-   $write_result_or_mem = $is_load ? $ld_data : $result;
+   $write_result_or_mem[31:0] = $is_load ? $ld_data[31:0] : $result[31:0];
    
    // Assert these to end simulation (before Makerchip cycle limit).
-   *passed = 1'b0;
+   //*passed = 1'b0;
+   m4+tb()
    *failed = *cyc_cnt > M4_MAX_CYC;
    
    //$rd_is_zero = $rd == 4'b0000;
    //$wr_en = $rd_is_zero ? 1'b0 : 1'b1;
    
    
-   m4+rf(32, 32, $reset, $rd_valid, $rd, $write_result_or_mem, $rs1_valid, $rs1,  $src1_value, $rs2_valid, $rs2,  $src2_value)
+   m4+rf(32, 32, $reset, $rd_valid & ~($rd == 5'b0), $rd, $write_result_or_mem[31:0], $rs1_valid, $rs1,  $src1_value, $rs2_valid, $rs2,  $src2_value)
    
       
-   m4+dmem(32, 32, $reset, $result[4:0], $is_s_instr, $src2_value[31:0], $is_load, $ld_data)
+   m4+dmem(32, 32, $reset, $result[6:2], $is_s_instr, $src2_value[31:0], $is_load, $ld_data)
    m4+cpu_viz()
 \SV
    endmodule
